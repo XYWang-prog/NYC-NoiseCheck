@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/grid.js": {
+      "maxDuration": 30
+    }
+  }
+}

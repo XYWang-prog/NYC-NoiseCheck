@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NYC NoiseCheck — Apartment Construction Noise Guide</title>
+<!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<!-- Project styles -->
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- Top bar -->
+<div id="top-bar">
+  <span class="title"><span class="title-dot"></span>NYC NoiseCheck</span>
+  <div id="date-btn">
+    <span class="icon">📅</span>
+    <span id="date-label">Loading…</span>
+  </div>
+</div>
+
+<!-- Floating search -->
+<div id="search-box">
+  <span class="search-icon">🔍</span>
+  <input type="text" id="search-input" placeholder="Enter an address to check noise…" autocomplete="off" />
+  <button id="search-clear" title="Clear search">✕</button>
+</div>
+
+<!-- Date popup -->
+<div id="date-popup">
+  <div class="date-row">
+    <div>
+      <label>Start Date</label>
+      <input type="date" id="input-start" />
+    </div>
+    <div>
+      <label>End Date</label>
+      <input type="date" id="input-end" />
+    </div>
+  </div>
+  <div class="presets">
+    <button data-months="3">3 Months</button>
+    <button data-months="6">6 Months</button>
+    <button data-months="12" class="active">1 Year</button>
+  </div>
+</div>
+
+<!-- Map -->
+<div id="map"></div>
+
+<!-- Search results panel -->
+<div id="results-panel">
+  <div class="panel-header">
+    <span class="panel-title">Search Results</span>
+    <button id="panel-close" title="Close">✕</button>
+  </div>
+  <div class="panel-body">
+    <!-- Stats -->
+    <div id="panel-stats"></div>
+    <!-- AI Analysis -->
+    <div id="ai-analysis"></div>
+    <!-- Project list -->
+    <div id="panel-list"></div>
+  </div>
+</div>
+
+<!-- Loading overlay -->
+<div id="loading-overlay">
+  <div class="spinner"></div>
+  <div class="loading-text" id="loading-text">Loading map…</div>
+</div>
+
+<!-- Refresh indicator -->
+<div id="refresh-indicator">Updating…</div>
+
+<!-- Search result count -->
+<div id="search-count" class="hidden">
+  <span id="search-count-text"></span>
+  <span id="search-count-hint">Click ✕ to clear search</span>
+</div>
+
+<!-- Legend -->
+<div id="legend">
+  <div id="legend-noise">
+    <div class="title">Construction Noise Score</div>
+    <div class="row"><span class="swatch" style="background:#7b241c"></span> 5+</div>
+    <div class="row"><span class="swatch" style="background:#c0392b"></span> 2.5 — 4.0</div>
+    <div class="row"><span class="swatch" style="background:#e74c3c"></span> 1.5 — 2.5</div>
+    <div class="row"><span class="swatch" style="background:#e67e22"></span> 1.0 — 1.5</div>
+    <div class="row"><span class="swatch" style="background:#f1c40f"></span> 0.5 — 1.0</div>
+    <div class="row"><span class="swatch" style="background:#a8d65e"></span> 0 — 0.5</div>
+  </div>
+  <div id="legend-worktypes" style="display:none;">
+    <div class="title">Work Types (150m)</div>
+    <div class="row"><span class="swatch" style="background:#e31a1c"></span> Full Demolition</div>
+    <div class="row"><span class="swatch" style="background:#fd8d3c"></span> Structural</div>
+    <div class="row"><span class="swatch" style="background:#a65628"></span> Foundation</div>
+    <div class="row"><span class="swatch" style="background:#238b45"></span> Earth Work</div>
+  </div>
+</div>
+
+<!-- Status bar -->
+<div id="status-bar">Data: NYC DOB NOW: Build</div>
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- App script -->
+<script src="app.js"></script>
+
+</body>
+</html>
