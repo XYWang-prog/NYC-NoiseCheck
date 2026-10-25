@@ -6,7 +6,7 @@ Single-page website providing construction noise insights for NYC apartment rent
 
 - **Tech stack**: Vanilla HTML + CSS + JavaScript + Node.js backend
 - **Entry point**: `index.html` (references `style.css` and `app.js`)
-- **Backend**: `server.js` (Express + OpenAI API for AI analysis + grid computation)
+- **Backend**: `server.js` (Express + OpenAI API for AI analysis) and `lib/` (noise model + grid computation, shared with the Vercel function)
 - **Deployment**: `node server.js`, then open `http://localhost:3000`
 - **Users**: General public — all interactions must be simple and intuitive
 
@@ -21,11 +21,16 @@ Single-page website providing construction noise insights for NYC apartment rent
 | Design Spec | [docs/03-design-spec.md](docs/03-design-spec.md) | UI layout, colors, component specs, interactions |
 | Implementation Plan | [docs/04-implementation-plan.md](docs/04-implementation-plan.md) | Phased development steps and verification |
 | API Reference | [docs/05-api-reference.md](docs/05-api-reference.md) | Endpoints, fields, query examples |
-| Noise Grid Plan | [docs/06-noise-grid-plan.md](docs/06-noise-grid-plan.md) | Noise grid implementation plan |
+| Noise Grid Plan | [docs/06-noise-grid-plan.md](docs/06-noise-grid-plan.md) | Noise grid implementation (data flow, bands, files) |
+| Noise Model | [docs/07-noise-model.md](docs/07-noise-model.md) | dBA model: formulas, equipment, activity curves, thresholds, limitations |
+| Calculation Walkthrough | [docs/08-calculation-walkthrough.md](docs/08-calculation-walkthrough.md) | Step-by-step calculation with a real worked example (Chinese) |
 | Dev Logs | [devlog/](devlog/) | Daily development records |
 | Main Styles | [style.css](style.css) | All CSS styles |
 | Main Script | [app.js](app.js) | All frontend JavaScript logic |
-| Server | [server.js](server.js) | Backend API + grid computation |
+| Server | [server.js](server.js) | Express routes (`/api/analyze`, `/api/grid`) |
+| Noise Model Code | [lib/noise-model.js](lib/noise-model.js) | Equipment levels, stages, activity curves, attenuation |
+| Grid Code | [lib/grid.js](lib/grid.js) | Data fetch, land mask, grid computation (shared by server.js and api/grid.js) |
+| Curve Script | [scripts/activity-curves.js](scripts/activity-curves.js) | Offline: re-derive activity curves from 311 complaints (run about yearly) |
 | Package | [package.json](package.json) | Dependencies and scripts |
 | Vercel Config | [vercel.json](vercel.json) | Vercel deployment settings |
 | API — Analyze | [api/analyze.js](api/analyze.js) | Vercel serverless: AI noise analysis |

@@ -1,7 +1,7 @@
 # 02 — Technical Design
 
 > Project: NYC NoiseCheck
-> Version: v1.0
+> Version: v1.1 (2026-10-25: dBA noise model)
 > Updated: 2026-07-16
 
 ---
@@ -12,8 +12,8 @@
 |-------|--------|--------|
 | Frontend | Vanilla HTML + CSS + JS | Zero install, double-click to open |
 | Map Library | Leaflet.js 1.9.4 (CDN) | Free, open source, 42KB |
-| Base Tiles | OpenStreetMap (CDN tiles) | Free, no API key needed |
-| Backend | Node.js + Express | Grid computation + AI analysis |
+| Base Tiles | CARTO Basemaps (`light_all`) | Free tier 5M tiles/month, API key required |
+| Backend | Node.js + Express | Grid computation (`lib/grid.js`, `lib/noise-model.js`) + AI analysis |
 | Geocoding | Nominatim API (free) | Address → coordinates |
 | AI Analysis | OpenAI GPT-4o-mini | Construction noise impact summary |
 | Date Picker | Native `<input type="date">` | Zero dependency |
@@ -31,12 +31,28 @@ Limit: 1000 per request (paginated via $limit + $offset)
 Query: SoQL ($select, $where, $group, $order, $limit, $offset)
 ```
 
+### Job Types (New Building lookup)
+
+```
+API:     https://data.cityofnewyork.us/resource/w9ak-ipjd.json  (DOB NOW: Build – Job Application Filings)
+Purpose: Structural permits count in the grid only for New Building jobs (joined on job_filing_number)
+Cache:   24 hours in lib/grid.js
+```
+
 ### Land Mask (Borough Boundaries)
 
 ```
 GeoJSON: https://data.cityofnewyork.us/resource/gthc-hcne.geojson
-Purpose: Filter grid points to NYC land areas only
+Purpose: Filter grid points to NYC land areas, and give each point its borough (for building coverage B)
 Geometry: MultiPolygon
+```
+
+### Model Calibration (offline only)
+
+```
+NYC 311 Service Requests (erm2-nwe9)   → activity curves (scripts/activity-curves.js)
+NYC Building Footprints (5zhs-2jue)    → building coverage B per borough
+See docs/07-noise-model.md
 ```
 
 ### Geocoding
@@ -54,11 +70,11 @@ Rate:  1 request/second (fair use)
 
 ```
 1. Load Leaflet → center on NYC [40.7128, -73.9660]
-2. POST /api/grid → backend fetches all permits
-3. Backend computes noise scores per grid point
-4. Returns array of {lat, lng, score, count, types, newest}
+2. POST /api/grid {dateStart, dateEnd} (as-of date − 12 months → as-of date)
+3. Backend fetches permits + New Building job list, computes dBA per grid point
+4. Returns array of {lat, lng, dba, count, types, newest}
 5. Frontend renders colored circle markers via Canvas
-6. Legend shows noise score color scale
+6. Legend shows the dBA bands (generated from NOISE_BANDS)
 ```
 
 ### Flow 2: Address Search + 150m Radius
@@ -74,11 +90,11 @@ Rate:  1 request/second (fair use)
 8. POST /api/analyze → AI noise analysis
 ```
 
-### Flow 3: Date Change
+### Flow 3: As-of Date Change
 
 ```
 1. Click date button → popup panel opens
-2. Select new range → panel closes
+2. Pick a date or a preset (Today / 3 Months Ago / 6 Months Ago) → panel closes
 3. Re-run Flow 1 (+ Flow 2 if search is active)
 ```
 
@@ -100,12 +116,12 @@ function haversineDistance(lat1, lng1, lat2, lng2) {
 }
 ```
 
-### Noise Score Formula
+### Noise Model (full method: [07-noise-model.md](07-noise-model.md))
 
 ```
-Project Noise = WorkTypeWeight × TimeWeight
-
-Grid Score = Σ (ProjectNoise × DistanceWeight) for all projects within 150m
+Site level = loudest permit at the site: stage L50 (CEQR Table 22-1 equipment) + 10·log10(activity)
+Level at d = site level − 20·log10(max(d, 7.62)/15.24) − min(10, 0.1·B·d)
+Grid dBA   = 10·log10 Σ 10^(level/10) over sites within 150 m
 ```
 
 ---
@@ -115,7 +131,7 @@ Grid Score = Σ (ProjectNoise × DistanceWeight) for all projects within 150m
 | Scenario | Strategy |
 |----------|----------|
 | Leaflet CDN load fail | "Map failed to load, please check your network" |
-| Grid API timeout (30s) | "Data load timed out, please try again" |
+| Grid API failure / timeout (server 20 s per upstream request, browser 60 s) | Grid removed; status bar "⚠️ Noise data unavailable — please refresh" |
 | Nominatim failure | "Could not recognize that address, try a more detailed address" |
 | 0 results within 150m | Panel shows "No construction projects nearby" |
 | AI analysis failure | "Analysis temporarily unavailable" |

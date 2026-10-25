@@ -1,8 +1,8 @@
 # 05 — API Reference
 
 > Project: NYC NoiseCheck
-> Version: v1.0
-> Updated: 2026-07-16
+> Version: v1.1
+> Updated: 2026-10-25 (job filings, Support of Excavation, internal /api/grid)
 
 ---
 
@@ -44,7 +44,8 @@ Auth:     Not required
 | `house_no` | text | House number |
 | `street_name` | text | Street name |
 | `borough` | text | Borough |
-| `job_filing_number` | text | Filing number |
+| `job_filing_number` | text | Filing number (join key to job filings) |
+| `filing_reason` | text | `Initial Permit`, `Renewal Permit Without Changes`, `Renewal Permit with Changes`, `No Work Permit` |
 | `owner_name` | text | Property owner |
 | `estimated_job_costs` | text | Estimated cost |
 
@@ -59,7 +60,7 @@ Solar, Sprinklers, Standpipe, Structural,
 Supported Scaffold, Support of Excavation, Suspended Scaffold
 ```
 
-This project uses only 4: `Full Demolition`, `Foundation`, `Earth Work`, `Structural`
+This project uses 5: `Full Demolition`, `Foundation`, `Earth Work`, `Structural`, `Support of Excavation`
 
 ### Common Query Examples
 
@@ -70,7 +71,7 @@ This project uses only 4: `Full Demolition`, `Foundation`, `Earth Work`, `Struct
      AND issued_date >= '2025-08-02T00:00:00'
      AND issued_date <= '2026-08-02T23:59:59'
      AND permit_status = 'Permit Issued'
-     AND work_type in ('Full Demolition','Foundation','Earth Work','Structural')
+     AND work_type in ('Full Demolition','Foundation','Earth Work','Structural','Support of Excavation')
 &$limit=1000
 ```
 
@@ -120,3 +121,70 @@ Rate:     1 request/second (fair use)
   "importance": 0.8
 }]
 ```
+
+---
+
+## 4. Job Application Filings (New Building lookup)
+
+```
+Endpoint: https://data.cityofnewyork.us/resource/w9ak-ipjd.json
+Dataset:  DOB NOW: Build – Job Application Filings
+Join key: job_filing_number (matches the permits dataset)
+Field:    job_type — Alteration | New Building | Alteration CO |
+          ALT-CO - New Building with Existing Elements to Remain | No Work | Full Demolition
+```
+
+Used by `lib/grid.js`: Structural permits count in the noise grid only for jobs whose `job_type` is `New Building` or `ALT-CO - New Building with Existing Elements to Remain` (about 75k job numbers, cached 24 hours).
+
+Paging: pages of 50,000 rows with `$order=:id` (without a stable order, pages can overlap or skip rows).
+
+---
+
+## 5. NYC 311 Service Requests (offline calibration only)
+
+```
+Endpoint: https://data.cityofnewyork.us/resource/erm2-nwe9.json
+Used by:  scripts/activity-curves.js (not called at runtime)
+Filter:   complaint_type = 'Noise' AND descriptor in (
+            'Noise: Construction Before/After Hours (NM1)', 'Noise: Construction Equipment (NC1)',
+            'Noise: Jack Hammering (NC2)', 'Construction', 'Construction Equipment')
+```
+
+311 renamed its descriptors at some point; both the old and the new spellings are included.
+
+---
+
+## 6. NYC Building Footprints (offline calibration only)
+
+```
+Endpoint: https://data.cityofnewyork.us/resource/5zhs-2jue.json
+Used for: building coverage B per borough (docs/07 §7.2)
+Note:     shape_area is in Web Mercator square meters — multiply by cos²(latitude) × 10.7639 for true square feet
+```
+
+---
+
+## 7. Internal API (this project)
+
+### `POST /api/grid`
+
+Request: `{ "dateStart": "2025-10-25T00:00:00", "dateEnd": "2026-10-25T23:59:59" }` (the as-of date is `dateEnd`)
+
+Response `200`: array of grid points
+
+```json
+{ "lat": 40.712345, "lng": -74.006789, "dba": 71.4, "count": 3, "types": "Foundation×2, Structural×1", "newest": "2026-09-29" }
+```
+
+| Field | Meaning |
+|-------|---------|
+| `dba` | Modeled Leq, dBA, 1 decimal |
+| `count` | Construction sites within 150 m |
+| `types` | Each site's loudest work type |
+| `newest` | Most recent issue date among contributing permits |
+
+Response `500`: `{ "error": "Grid generation failed" }` (an upstream request failed or timed out).
+
+### `POST /api/analyze`
+
+Unchanged: AI noise summary for the search panel (not yet connected to the dBA model).

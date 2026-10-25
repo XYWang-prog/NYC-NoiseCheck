@@ -24,6 +24,7 @@ Phase 3 → Date filter
 Phase 4 → Address search + 150m radius
 Phase 5 → Results panel + AI analysis
 Phase 6 → Polish & finish
+Phase 7 → dBA noise model + as-of date   (✅ done, 2026-10-25)
 ```
 
 ---
@@ -60,7 +61,7 @@ Phase 6 → Polish & finish
 
 **Verify:**
 1. Double-click index.html → browser opens
-2. See NYC map (OpenStreetMap tiles)
+2. See NYC map (CARTO basemaps)
 3. Can zoom and pan
 
 **Does NOT include:** construction data, search, date picker
@@ -190,3 +191,32 @@ Phase 6 → Polish & finish
 2. Network failure → friendly error message
 3. Mobile width → panel slides from bottom
 4. All interactions smooth, no lag
+
+---
+
+## Phase 7: dBA Noise Model + As-of Date
+
+**Goal:** Replace the self-assigned score weights with an authoritative dBA model; show the map as of one date.
+
+**Deliverables:**
+- `docs/07-noise-model.md` (method, sources, limitations)
+- `lib/noise-model.js` (equipment levels, stages, activity curves, attenuation)
+- `lib/grid.js` (grid computation shared by `server.js` and `api/grid.js`)
+- `scripts/activity-curves.js` (offline re-derivation of activity curves from 311 complaints)
+- Frontend: dBA color bands, generated legend, tooltip, "As of" date, Support of Excavation, grid error message
+
+**Key technical points:**
+- Equipment levels from CEQR Table 22-1 (RCNM library); stage equipment from NYC FEIS documents
+- Activity curves from 311 construction-noise complaints around permits
+- CEQR 6 dB/doubling + ISO 9613-2 housing attenuation
+- Structural permits count only for New Building jobs
+- Sites merged by coordinates, energy sum per grid point
+
+**Verify:**
+1. Model numbers match `docs/07` (stage levels 87.1 / 86.4 / 85.4 dBA at 50 ft, etc.)
+2. Refactor step: old handler and new `computeGrid` give identical output on identical input
+3. `POST /api/grid` (as of today): ~5,850 land points, median ~68.7 dBA; the second request hits the New Building job cache
+4. An upstream failure returns HTTP 500 and the UI shows the error message
+5. Browser: legend with six bands + "No dot" row + disclaimer, tooltip text, as-of presets and past-date note, Support of Excavation markers, mobile layout
+
+**Open:** ISO 9613-2 Annex A.3 text, to confirm the unit of B (`docs/07` §7.2). The FTA thresholds were checked against FTA Report No. 0123 on 2026-10-25 (`docs/07` §10.1).
