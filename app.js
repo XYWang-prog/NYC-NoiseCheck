@@ -9,33 +9,40 @@ const CONFIG = {
   searchZoom:     16,
   permitsApiBase: 'https://data.cityofnewyork.us/resource/rbx6-tga4.json',
   nominatimUrl:   'https://nominatim.openstreetmap.org/search',
-  dateStart:       null,
-  dateEnd:         null,
-  workTypes:       ['Full Demolition','Foundation','Earth Work','Structural'],
+  dateStart:       null,   // as-of date minus lookbackMonths
+  dateEnd:         null,   // end of the as-of date
+  lookbackMonths:  12,     // permits issued this long before the as-of date (docs/07 §9)
+  workTypes:       ['Full Demolition','Foundation','Earth Work','Structural','Support of Excavation'],
   searchRadiusM:   150,
   gridSpacingM:    200,
 };
 
-// ---- Noise Weights ----
-const NOISE_WEIGHTS = {
-  'Full Demolition': 1.00,
-  'Foundation':      0.90,
-  'Earth Work':      0.80,
-  'Structural':      0.65,
-};
-
-const STRUCTURAL_KEYWORDS = [
-  'steel erection', 'structural steel', 'concrete frame',
-  'columns', 'beams', 'deck', 'shoring', 'underpinning',
-  'reinforcement', 'major structural alteration',
+// ---- Noise Bands (docs/07-noise-model.md §10) ----
+// Leq dBA, upper bound inclusive: CEQR Table 19-2 residential L10 limits − 3 dB; FTA Table 7-3 residential day 8-hr Leq 80
+// (FTA's 90 dBA is a 1-hr limit for the two noisiest machines — a different quantity — so the 90 edge is simply 80 + 10)
+// Colors: ColorBrewer "Spectral" (Brewer, Penn State), diverging at the CEQR acceptability line (Leq 67 ≈ L10 70):
+// blue / teal = acceptable side, orange → red → magenta = unacceptable side (docs/07 §10.2).
+// Radius grows with severity in clear steps (~1.4× on the common classes) so size reads as a second cue.
+const NOISE_BANDS = [
+  { min: 90,        color: '#9e0142', radius: 6.4, range: '90+',   label: '10+ dB above FTA 8-hr guideline' },
+  { min: 80,        color: '#d7191c', radius: 5.4, range: '80–90', label: 'Above FTA 8-hr guideline' },
+  { min: 77,        color: '#f46d43', radius: 4.3, range: '77–80', label: 'Clearly unacceptable' },
+  { min: 67,        color: '#fdae61', radius: 3.2, range: '67–77', label: 'Marginally unacceptable' },
+  { min: 62,        color: '#66c2a5', radius: 2.2, range: '62–67', label: 'Marginally acceptable' },
+  { min: -Infinity, color: '#3288bd', radius: 1.5, range: '≤ 62',  label: 'Acceptable' },
 ];
 
 // ---- Work Type Colors ----
 const WORK_TYPE_COLORS = {
-  'Full Demolition': '#e31a1c',
-  'Foundation':      '#a65628',
-  'Earth Work':      '#238b45',
-  'Structural':      '#fd8d3c',
+  'Full Demolition':       '#e31a1c',
+  'Foundation':            '#a65628',
+  'Earth Work':            '#238b45',
+  'Structural':            '#fd8d3c',
+  'Support of Excavation': '#6a51a3',
+};
+const WORK_TYPE_LABELS = {
+  'Full Demolition': 'Demolition', 'Foundation': 'Foundation', 'Earth Work': 'Earth Work',
+  'Structural': 'Structural', 'Support of Excavation': 'Excavation Support',
 };
 
 // ---- State ----
@@ -57,8 +64,8 @@ const refreshIndicator  = document.getElementById('refresh-indicator');
 const dateBtn           = document.getElementById('date-btn');
 const dateLabel         = document.getElementById('date-label');
 const datePopup         = document.getElementById('date-popup');
-const inputStart        = document.getElementById('input-start');
-const inputEnd          = document.getElementById('input-end');
+const inputAsOf         = document.getElementById('input-asof');
+const pastDateNote      = document.getElementById('past-date-note');
 const presetBtns        = datePopup.querySelectorAll('.presets button');
 const searchInput       = document.getElementById('search-input');
 const searchClearBtn    = document.getElementById('search-clear');
@@ -99,16 +106,24 @@ function toDateStr(date) {
 }
 function toDisplayStr(dateStr) { return dateStr.replace(/-/g, '/'); }
 
-function initDateRange(monthsAgo) {
-  const end   = new Date();
-  const start = new Date();
-  start.setMonth(start.getMonth() - monthsAgo);
+// Noise is shown "as of" one date: permits issued in the lookback window that are still active on it
+function setAsOf(dateStr) {
+  const start = new Date(dateStr + 'T00:00:00');
+  start.setMonth(start.getMonth() - CONFIG.lookbackMonths);
   CONFIG.dateStart = toDateStr(start) + 'T00:00:00';
-  CONFIG.dateEnd   = toDateStr(end)   + 'T23:59:59';
-  inputStart.value = toDateStr(start);
-  inputEnd.value   = toDateStr(end);
-  dateLabel.textContent = `${toDisplayStr(toDateStr(start))} — ${toDisplayStr(toDateStr(end))}`;
+  CONFIG.dateEnd   = dateStr + 'T23:59:59';
+  inputAsOf.value  = dateStr;
+  dateLabel.textContent = `As of ${toDisplayStr(dateStr)}`;
+  pastDateNote.classList.toggle('show', isPastAsOf());
 }
+
+function initAsOf(monthsAgo) {
+  const d = new Date();
+  d.setMonth(d.getMonth() - monthsAgo);
+  setAsOf(toDateStr(d));
+}
+
+function isPastAsOf() { return CONFIG.dateEnd.slice(0, 10) < toDateStr(new Date()); }
 
 // ---- Date Button ----
 dateBtn.addEventListener('click', () => datePopup.classList.toggle('show'));
@@ -119,22 +134,19 @@ document.addEventListener('click', (e) => {
 });
 
 function applyCustomDate() {
-  const s = inputStart.value, e = inputEnd.value;
-  if (!s || !e) return;
-  CONFIG.dateStart = s + 'T00:00:00';
-  CONFIG.dateEnd   = e + 'T23:59:59';
-  dateLabel.textContent = `${toDisplayStr(s)} — ${toDisplayStr(e)}`;
+  const d = inputAsOf.value;
+  if (!d) return;
+  setAsOf(d > toDateStr(new Date()) ? toDateStr(new Date()) : d);
   presetBtns.forEach(b => b.classList.remove('active'));
   datePopup.classList.remove('show');
   refreshAll();
 }
-inputStart.addEventListener('change', applyCustomDate);
-inputEnd.addEventListener('change', applyCustomDate);
+inputAsOf.addEventListener('change', applyCustomDate);
 
 presetBtns.forEach(btn => {
   btn.addEventListener('click', () => {
     const months = parseInt(btn.dataset.months);
-    initDateRange(months);
+    initAsOf(months);
     presetBtns.forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     datePopup.classList.remove('show');
@@ -227,14 +239,13 @@ async function performSearch(lat, lng) {
     if (dist <= CONFIG.searchRadiusM) nearby.push({ ...row, distance: Math.round(dist) });
   }
 
-  const typeLabels = { 'Full Demolition': 'Demolition', 'Foundation': 'Foundation', 'Earth Work': 'Earth Work', 'Structural': 'Structural' };
   const usedCoords = new Map();
   for (const item of nearby) {
     const color = getWorkTypeColor(item.work_type);
     const [mLat, mLng] = offsetCoord(parseFloat(item.latitude), parseFloat(item.longitude), usedCoords);
     const marker = L.circleMarker([mLat, mLng], { radius: 7, color: '#fff', weight: 2, fillColor: color, fillOpacity: 0.9 });
     const addr = [item.house_no, item.street_name].filter(Boolean).join(' ');
-    const typeLabel = typeLabels[item.work_type] || item.work_type;
+    const typeLabel = WORK_TYPE_LABELS[item.work_type] || item.work_type;
     const date = item.issued_date ? item.issued_date.substring(0, 10) : '';
     marker.bindPopup(`<div style="font-size:13px;line-height:1.5;max-width:240px;"><strong>${typeLabel}</strong><br>${item.job_description||''}<br>${addr?'📍 '+addr+'<br>':''}${date?'📅 '+date:''}</div>`);
     searchMarkersGroup.addLayer(marker);
@@ -304,10 +315,9 @@ function showResultsPanel(nearby) {
   }
   const typeCounts = {};
   for (const item of nearby) { const t = item.work_type||'Unknown'; typeCounts[t]=(typeCounts[t]||0)+1; }
-  const typeLabels = { 'Full Demolition': 'Demolition', 'Foundation': 'Foundation', 'Earth Work': 'Earth Work', 'Structural': 'Structural' };
   let statsHTML = `<div class="stat-total">${total} projects</div><div class="stat-sub">within 150m radius</div><div class="stat-types">`;
   for (const [type, count] of Object.entries(typeCounts)) {
-    const label = typeLabels[type]||type;
+    const label = WORK_TYPE_LABELS[type]||type;
     statsHTML += `<div class="stat-type-item"><span class="stat-type-dot" style="background:${getWorkTypeColor(type)}"></span>${label}: ${count}</div>`;
   }
   statsHTML += '</div>';
@@ -316,7 +326,7 @@ function showResultsPanel(nearby) {
   let listHTML = '<div class="panel-section-label">Projects</div>';
   for (let i=0; i<nearby.length; i++) {
     const item = nearby[i], color = getWorkTypeColor(item.work_type);
-    const typeLabel = typeLabels[item.work_type]||item.work_type;
+    const typeLabel = WORK_TYPE_LABELS[item.work_type]||item.work_type;
     const addr = [item.house_no, item.street_name].filter(Boolean).join(' ');
     const desc = item.job_description||'', date = item.issued_date?item.issued_date.substring(0,10):'';
     listHTML += `<div class="panel-card" data-index="${i}" style="cursor:pointer"><div class="card-bar" style="background:${color}"></div><div class="card-info"><div class="card-type">${typeLabel}</div>${desc?`<div class="card-desc">${desc}</div>`:''}<div class="card-meta">${[addr,date].filter(Boolean).join(' · ')}</div></div><div class="card-dist">${item.distance}m</div></div>`;
@@ -381,20 +391,22 @@ searchClearBtn.addEventListener('click', () => { searchInput.value=''; searchCle
 
 // ---- Grid Loading ----
 let gridPoints = [];
+let gridError = false;
 
-function getGridRadius(score, zoom) {
-  const base = score < 0.5 ? 2.0 : score < 1.0 ? 2.6 : score < 1.5 ? 3.2 : score < 2.5 ? 3.8 : score < 5.0 ? 4.4 : 5.0;
+function getNoiseBand(dba) { return NOISE_BANDS.find(b => dba > b.min); }
+
+function getGridRadius(dba, zoom) {
   const scale = Math.pow(2, (zoom - 13) / 5);
-  return Math.max(1, Math.min(base * scale, 5.5));
+  return Math.max(1, Math.min(getNoiseBand(dba).radius * scale, 9));
 }
 
-function getGridColor(score) {
-  if (score < 0.5) return '#a8d65e';       // light green
-  if (score < 1.0) return '#f1c40f';       // yellow
-  if (score < 1.5) return '#e67e22';       // orange
-  if (score < 2.5) return '#e74c3c';       // red
-  if (score < 5.0) return '#c0392b';       // deep red
-  return '#7b241c';                         // dark crimson
+function getGridColor(dba) { return getNoiseBand(dba).color; }
+
+function renderNoiseLegend() {
+  legendNoise.innerHTML = '<div class="title">Construction Noise (dBA)</div>'
+    + NOISE_BANDS.map(b => `<div class="row"><span class="swatch" style="background:${b.color}"></span><span class="legend-range">${b.range}</span>${b.label}</div>`).join('')
+    + '<div class="row"><span class="swatch swatch-empty"></span>No dot: no major construction within 150m</div>'
+    + '<div class="legend-note">Model estimate (weekday daytime, outdoor) — not a measurement or official determination. Ratings follow NYC CEQR and FTA guidelines.</div>';
 }
 
 function renderGrid() {
@@ -404,12 +416,12 @@ function renderGrid() {
     pointToLayer: function (feature, latlng) {
       const props = feature.properties;
       const marker = L.circleMarker(latlng, {
-        radius: getGridRadius(props.score, zoom),
+        radius: getGridRadius(props.dba, zoom),
         color: 'transparent', weight: 0,
-        fillColor: getGridColor(props.score), fillOpacity: 0.85,
+        fillColor: getGridColor(props.dba), fillOpacity: 0.85,
       });
       if (props.count) {
-        marker.bindTooltip(`<b>Score:</b> ${props.score}<br><b>Projects:</b> ${props.count}`, { direction: 'top', offset: [0, -4] });
+        marker.bindTooltip(`<b>≈ ${Math.round(props.dba)} dBA</b> · ${getNoiseBand(props.dba).label}<br>Estimate at this grid point · Sites within 150m: ${props.count}`, { direction: 'top', offset: [0, -4] });
       }
       return marker;
     },
@@ -423,8 +435,8 @@ function updateGridRadii() {
   if (!gridLayer || !gridPoints.length) return;
   const zoom = map.getZoom();
   gridLayer.eachLayer(function (marker) {
-    const score = marker.feature ? marker.feature.properties.score : 0;
-    marker.setRadius(getGridRadius(score, zoom));
+    const dba = marker.feature ? marker.feature.properties.dba : 0;
+    marker.setRadius(getGridRadius(dba, zoom));
   });
 }
 
@@ -436,20 +448,28 @@ async function loadGrid() {
     const resp = await fetch('/api/grid', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ dateStart: CONFIG.dateStart, dateEnd: CONFIG.dateEnd }),
+      signal: AbortSignal.timeout(60000),
     });
     if (!resp.ok) throw new Error(`Grid HTTP ${resp.status}`);
     gridPoints = await resp.json();
+    gridError = false;
     renderGrid();
     console.log(`Grid loaded: ${gridPoints.length} points`);
   } catch (error) {
     console.error('Grid failed:', error);
+    gridError = true;
+    gridPoints = [];   // never leave a grid for a different date on screen
+    if (gridLayer) { map.removeLayer(gridLayer); gridLayer = null; }
   }
 }
 
 // ---- Status Bar ----
-function updateStatusTime() {
+function updateStatusBar() {
+  statusBar.classList.toggle('error', gridError);
+  if (gridError) { statusBar.textContent = '⚠️ Noise data unavailable — please refresh'; return; }
   const now = new Date();
-  statusBar.textContent = `Data: NYC DOB NOW: Build · Updated ${now.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'})}`;
+  const past = isPastAsOf() ? ` · As of ${toDisplayStr(CONFIG.dateEnd.slice(0, 10))} — permits signed off since then are not included` : '';
+  statusBar.textContent = `Data: NYC DOB NOW: Build · Updated ${now.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'})}${past}`;
 }
 
 // ---- Refresh All ----
@@ -462,20 +482,22 @@ async function refreshAll() {
       clearSearchMarkers();
       await performSearch(latlng.lat, latlng.lng);
     }
-    updateStatusTime();
+    updateStatusBar();
   } catch (error) { console.error('Refresh failed:', error); }
   finally { setTimeout(() => refreshIndicator.classList.remove('show'), 600); }
 }
 
 // ---- Init ----
 async function init() {
-  initDateRange(12);
+  inputAsOf.max = toDateStr(new Date());
+  initAsOf(0);
+  renderNoiseLegend();
   try {
     loadingText.textContent = 'Loading construction data…';
     await loadGrid();
     loadingText.textContent = 'Rendering map…';
     loadingOverlay.classList.add('hidden');
-    updateStatusTime();
+    updateStatusBar();
   } catch (error) {
     console.error('Init failed:', error);
     loadingText.textContent = 'Failed to load. Please check your network and refresh.';

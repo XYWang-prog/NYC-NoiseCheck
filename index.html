@@ -31,19 +31,17 @@
 <div id="date-popup">
   <div class="date-row">
     <div>
-      <label>Start Date</label>
-      <input type="date" id="input-start" />
-    </div>
-    <div>
-      <label>End Date</label>
-      <input type="date" id="input-end" />
+      <label>Noise as of</label>
+      <input type="date" id="input-asof" />
     </div>
   </div>
   <div class="presets">
-    <button data-months="3">3 Months</button>
-    <button data-months="6">6 Months</button>
-    <button data-months="12" class="active">1 Year</button>
+    <button data-months="0" class="active">Today</button>
+    <button data-months="3">3 Months Ago</button>
+    <button data-months="6">6 Months Ago</button>
   </div>
+  <div class="date-note">Includes permits issued in the 12 months before this date that are still active on it.</div>
+  <div class="date-note past" id="past-date-note">Past date: permits signed off since then are not included.</div>
 </div>
 
 <!-- Map -->
@@ -82,21 +80,14 @@
 
 <!-- Legend -->
 <div id="legend">
-  <div id="legend-noise">
-    <div class="title">Construction Noise Score</div>
-    <div class="row"><span class="swatch" style="background:#7b241c"></span> 5+</div>
-    <div class="row"><span class="swatch" style="background:#c0392b"></span> 2.5 — 4.0</div>
-    <div class="row"><span class="swatch" style="background:#e74c3c"></span> 1.5 — 2.5</div>
-    <div class="row"><span class="swatch" style="background:#e67e22"></span> 1.0 — 1.5</div>
-    <div class="row"><span class="swatch" style="background:#f1c40f"></span> 0.5 — 1.0</div>
-    <div class="row"><span class="swatch" style="background:#a8d65e"></span> 0 — 0.5</div>
-  </div>
+  <div id="legend-noise"><!-- filled by renderNoiseLegend() in app.js --></div>
   <div id="legend-worktypes" style="display:none;">
     <div class="title">Work Types (150m)</div>
     <div class="row"><span class="swatch" style="background:#e31a1c"></span> Full Demolition</div>
     <div class="row"><span class="swatch" style="background:#fd8d3c"></span> Structural</div>
     <div class="row"><span class="swatch" style="background:#a65628"></span> Foundation</div>
     <div class="row"><span class="swatch" style="background:#238b45"></span> Earth Work</div>
+    <div class="row"><span class="swatch" style="background:#6a51a3"></span> Support of Excavation</div>
   </div>
 </div>
 

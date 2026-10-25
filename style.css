@@ -211,6 +211,19 @@ body {
   border-color: #2b7ce6;
   font-weight: 600;
 }
+#date-popup .date-note {
+  margin-top: 12px;
+  max-width: 300px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #999;
+}
+#date-popup .date-note.past {
+  display: none;
+  margin-top: 6px;
+  color: #b35c00;
+}
+#date-popup .date-note.past.show { display: block; }
 
 /* ===== Loading Overlay ===== */
 #loading-overlay {
@@ -310,6 +323,22 @@ body {
   width: 18px; height: 12px;
   border-radius: 2px;
   flex-shrink: 0;
+}
+#legend .swatch-empty {
+  background: transparent;
+  border: 1px dashed #aaa;
+}
+#legend .legend-range {
+  min-width: 40px;
+  color: #333;
+  font-variant-numeric: tabular-nums;
+}
+#legend .legend-note {
+  max-width: 240px;
+  margin-top: 6px;
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: #999;
 }
 
 /* ===== Smooth Transitions ===== */
@@ -576,4 +605,8 @@ body {
   font-size: 11px;
   color: #999;
   z-index: 1000;
+}
+#status-bar.error {
+  color: #c00;
+  font-weight: 600;
 }
