@@ -1,8 +1,8 @@
 # 05 — API Reference
 
 > Project: NYC NoiseCheck
-> Version: v1.1
-> Updated: 2026-10-25 (job filings, Support of Excavation, internal /api/grid)
+> Version: v1.3
+> Updated: 2026-10-26 (internal /api/point, /api/analyze summary, runtime 311; summary gains indoor facade fields)
 
 ---
 
@@ -140,17 +140,20 @@ Paging: pages of 50,000 rows with `$order=:id` (without a stable order, pages ca
 
 ---
 
-## 5. NYC 311 Service Requests (offline calibration only)
+## 5. NYC 311 Service Requests
 
 ```
 Endpoint: https://data.cityofnewyork.us/resource/erm2-nwe9.json
-Used by:  scripts/activity-curves.js (not called at runtime)
+Used by:  scripts/activity-curves.js (offline calibration),
+          app.js fetchComplaints (runtime address card)
 Filter:   complaint_type = 'Noise' AND descriptor in (
             'Noise: Construction Before/After Hours (NM1)', 'Noise: Construction Equipment (NC1)',
             'Noise: Jack Hammering (NC2)', 'Construction', 'Construction Equipment')
 ```
 
 311 renamed its descriptors at some point; both the old and the new spellings are included.
+
+The runtime query (address card) additionally filters `created_date` to the last 3 months and counts complaints within 400 m of the searched point. Parameters live in `SUMMARY_CONFIG.complaints` (app.js); keep the descriptor list in sync with `DESCRIPTORS` in scripts/activity-curves.js.
 
 ---
 
@@ -185,6 +188,43 @@ Response `200`: array of grid points
 
 Response `500`: `{ "error": "Grid generation failed" }` (an upstream request failed or timed out).
 
+### `POST /api/point`
+
+Single-point noise at an exact lat/lng — the same model as the grid (used by the address search card).
+
+Request: `{ "lat": 40.7546, "lng": -73.9774, "dateStart": "2025-10-25T00:00:00", "dateEnd": "2026-10-25T23:59:59" }`
+
+Response `200`:
+
+```json
+{ "lat": 40.7546, "lng": -73.9774, "dba": 73.5, "count": 3, "types": "Earth Work×1, Full Demolition×1, Support of Excavation×1", "newest": "2026-10-20", "borough": "1" }
+```
+
+| Field | Meaning |
+|-------|---------|
+| `dba` | Modeled Leq at the exact point, 1 decimal; `null` when no site within 150 m |
+| `count` | Construction sites within 150 m |
+| `types` | Each site's loudest work type (same format as /api/grid) |
+| `newest` | Most recent issue date among contributing permits |
+| `borough` | borocode used for the building-coverage factor; `null` for points in water (coverage fallback 0.25) |
+
+Fetches only permits in a bbox around the point — attenuation stops at 150 m, so the result matches what /api/grid returns for a lattice point at the same location (verified with the docs/08 worked example).
+
+Response `400`: `{ "error": "Invalid coordinates" }`. Response `500`: `{ "error": "Point computation failed" }`.
+
 ### `POST /api/analyze`
 
-Unchanged: AI noise summary for the search panel (not yet connected to the dBA model).
+AI noise summary for the search panel, anchored to the dBA model.
+
+Request:
+
+```json
+{
+  "projects": [{ "work_type": "Foundation", "job_description": "…", "issued_date": "2026-08-01", "distance": 45 }],
+  "summary": { "dba": 73.5, "feeling": "Loud", "feelingDetail": "Marginally unacceptable", "indoorClosed": 55.5, "indoorOpen": 65.5, "facadeClosedDb": 18, "facadeOpenDb": 8, "complaints311": 7, "address": "350 5th Ave, New York", "asOf": "2026-10-26" }
+}
+```
+
+`summary` is optional (absent = legacy prompt). `dba`/`feeling` are `null` when the model found no sites within 150 m; `complaints311` is `null` when the 311 fetch failed (the prompt tells the model not to invent numbers). `indoorClosed`/`indoorOpen` are the modeled outdoor level minus a typical facade loss (`facadeClosedDb` = 18 dB closed windows, `facadeOpenDb` = 8 dB window open); the prompt quotes indoor levels as the resident's actual exposure, defaulting to 18/8 if the fields are absent.
+
+Response `200`: `{ "analysis": "…" }` (2-4 sentences, English). Response `500`: `{ "analysis": null, "error": "AI analysis unavailable. Please try again later." }`.

@@ -283,6 +283,19 @@ node -e "const m=require('./lib/noise-model'); console.log(m.levelAtDistance(85.
 node -e "const m=require('./lib/noise-model'); console.log(m.energySum([69.22, 68.33, 68.68]).toFixed(2))"
 ```
 
+### 地址搜索卡片用的是同一个计算
+
+搜索地址时，结果面板顶部的汇总卡片显示这个**精确点**的总 dBA，用的是上面同一套公式和同一个核心函数（`sourceLevel` → 同坐标合并 → `levelAtDistance` → 能量叠加），入口是 `POST /api/point`（`computePointNoise`，lib/grid.js）。
+
+和热力图的差别只有两处：
+
+- **取数范围**：只拉点周围约 180 m 的 bbox（150 m × 1.2 补丁），不是全城。衰减在 150 m 就截止，所以结果和全城拉取逐字段一致（已用本节算例点核对）。
+- **显示精度**：卡片显示 1 位小数（如室外 73.5 dBA → 卡片默认关窗值 55.5 dBA），地图圆点悬停显示取整值（≈ 74 dBA）。地址点通常不在网格上，与最近圆点差零点几 dB 属正常。
+
+卡片默认显示**关窗室内值**（室外 dBA −18 dB），卡片上有 🔒/🪟 小开关可切换开窗（−8 dB）；体感等级按室内 4 档判（安静 ≤32 / 一般 32–42 / 较吵 42–52 / 很吵 >52，锚定 CEQR 室内标准，见 `SUMMARY_CONFIG.feelingBandsIndoor` 与 docs/07 §10.3）。户外判级 4 档（62/67/77，`SUMMARY_CONFIG.feelingBands`）只用于 AI 分析。热力图**始终显示室外模型**，没有室内模式。311 投诉数是真实今天往前 3 个月、400 m 半径内的施工噪音投诉，与截至日期无关（见 `SUMMARY_CONFIG.complaints`）。
+
+AI 分析不受卡片开关影响：始终收到室外值 + 室内两个值（`indoorClosed`/`indoorOpen`），prompt 要求以关窗值为住户实际暴露写分析。隔声取值在 `SUMMARY_CONFIG.facade`（app.js）。
+
 ---
 
 ## 5. 想调整某个参数，改哪里
@@ -295,6 +308,7 @@ node -e "const m=require('./lib/noise-model'); console.log(m.energySum([69.22, 6
 | 楼房遮挡 | `BUILDING_COVERAGE`；全部设为 0 就关闭 | 150 m 处最多差 3–5 dB |
 | 色阶切点、颜色、圆点大小 | `NOISE_BANDS`（app.js）；图例和悬停文字会自动跟着变 | 只影响显示，不改计算 |
 | 回看期 12 个月 | `CONFIG.lookbackMonths`（app.js） | 改成 18 个月几乎没有影响 |
+| 体感等级分档、311 口径与半径、墙体隔声 | `SUMMARY_CONFIG`（app.js） | 影响汇总卡片显示与 311 统计；隔声值经 `applyFacade` 平移卡片显示（地图保持室外模型） |
 | 工种对应哪个阶段 | `WORK_TYPE_STAGE`（lib/noise-model.js） | 改变该工种的声级 |
 
 ---

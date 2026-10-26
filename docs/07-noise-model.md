@@ -1,7 +1,7 @@
 # 07 — Noise Model (dBA)
 
 > Created: 2026-10-25
-> Status: ✅ Implemented. FTA thresholds checked against the original manual (§10.1). One open check: the unit of B in ISO 9613-2 (§7.2)
+> Status: ✅ Implemented. FTA thresholds checked against the original manual (§10.1). Indoor feeling tiers for the address card (§10.3). One open check: the unit of B in ISO 9613-2 (§7.2)
 > Step-by-step walkthrough with a real worked example (Chinese): [08-calculation-walkthrough.md](08-calculation-walkthrough.md)
 
 ---
@@ -336,6 +336,21 @@ For context:
 
 - **Background noise.** Measured daytime street levels in Midtown Manhattan are Leq(1) 67–76 dBA (15 Penn Plaza FEIS, Appendix G.3).
 - **Indoor levels.** CEQR Table 19-3 requires 28–35 dB(A) of window-wall attenuation, with windows closed, for new homes exposed to 70–80 dBA L10.
+
+### 10.3 Indoor feeling tiers (summary card, added 2026-10-26)
+
+The map always shows the outdoor model (§10). The address search card additionally shows the indoor estimate — the outdoor dBA shifted by a typical facade loss (−8 dB window open, −18 dB windows closed, `SUMMARY_CONFIG.facade`) — and rates it with four indoor feeling tiers, anchored the same way as the outdoor bands: published criteria, with CEQR's L10 converted to Leq by subtracting 3 dB (§7.1, Eq. 3). A separate indoor scale is needed because indoor 50 dBA is already intrusive while outdoor 50 dBA is quiet.
+
+| Leq (dBA) | Color | Label | Source |
+|---|---|---|---|
+| > 52 | `#f46d43` orange-red | Very loud | Derived: interior day criterion + 10 (perception tier) |
+| 42–52 | `#fdae61` light orange | Loud | CEQR Table 19-2, residence interior 7 AM–10 PM: L10 45 → Leq 42 |
+| 32–42 | `#66c2a5` teal | Moderate | CEQR: interior L10 45 → Leq 42 (upper bound) |
+| ≤ 32 | `#3288bd` blue | Quiet | CEQR Table 19-2, residence interior 10 PM–7 AM: L10 35 → Leq 32 |
+
+- **The 42 dBA boundary is the CEQR interior acceptability line** (L10 45 daytime for residences), the same role the 67 dBA line plays outdoors.
+- **WHO corroboration.** WHO Guidelines for Community Noise (1999): the indoor daytime guideline 35 dB LAeq falls inside the 32–42 tier, and the night bedroom guideline 30 dB LAeq sits at the 32 boundary.
+- A three-mode map toggle (outdoor / window open / windows closed, with a separate six-band indoor color scale) was built and then removed at the owner's request on 2026-10-26 — the map is outdoor-only; indoor numbers remain on the card.
 
 ---
 
