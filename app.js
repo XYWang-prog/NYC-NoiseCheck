@@ -357,7 +357,7 @@ async function fetchPointNoise(lat, lng) {
   const resp = await fetch('/api/point', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ lat, lng, dateStart: CONFIG.dateStart, dateEnd: CONFIG.dateEnd }),
-    signal: AbortSignal.timeout(60000),
+    signal: AbortSignal.timeout(90000), // longer than the 60s serverless cap (cold start + retries)
   });
   if (!resp.ok) throw new Error(`Point HTTP ${resp.status}`);
   return resp.json();

@@ -2,6 +2,9 @@
   "functions": {
     "api/grid.js": {
       "maxDuration": 30
+    },
+    "api/point.js": {
+      "maxDuration": 60
     }
   }
 }

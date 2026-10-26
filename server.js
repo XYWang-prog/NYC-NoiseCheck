@@ -100,7 +100,7 @@ app.post('/api/point', async (req, res) => {
       return res.status(400).json({ error: 'Invalid coordinates' });
     }
     console.error('Point error:', error.message);
-    res.status(500).json({ error: 'Point computation failed' });
+    res.status(500).json({ error: 'Point computation failed', details: error.message });
   }
 });
 
