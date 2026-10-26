@@ -45,6 +45,36 @@ const WORK_TYPE_LABELS = {
   'Structural': 'Structural', 'Support of Excavation': 'Excavation Support',
 };
 
+// ---- Summary Card Config (address search panel) ----
+// 体感等级 4 档：62/67/77 dBA 分界，与 NOISE_BANDS 的 CEQR 切点一致（docs/07 §10）
+const SUMMARY_CONFIG = {
+  feelingBands: [
+    { min: 77,        color: '#f46d43', label: 'Very loud', sublabel: 'Clearly unacceptable' },
+    { min: 67,        color: '#fdae61', label: 'Loud',      sublabel: 'Marginally unacceptable' },
+    { min: 62,        color: '#66c2a5', label: 'Moderate',  sublabel: 'Marginally acceptable' },
+    { min: -Infinity, color: '#3288bd', label: 'Quiet',     sublabel: 'Acceptable' },
+  ],
+  // 室内 4 档：锚点 32/42/52（CEQR 室内昼间 L10 45≈Leq 42、夜间 L10 35≈Leq 32，docs/07 §10.3），仅用于卡片
+  feelingBandsIndoor: [
+    { min: 52,        color: '#f46d43', label: 'Very loud', sublabel: 'Intrusive indoor' },
+    { min: 42,        color: '#fdae61', label: 'Loud',      sublabel: 'Above interior day criterion' },
+    { min: 32,        color: '#66c2a5', label: 'Moderate',  sublabel: 'Meets interior day criterion' },
+    { min: -Infinity, color: '#3288bd', label: 'Quiet',     sublabel: 'Meets interior night criterion' },
+  ],
+  facade: {
+    // 典型墙体隔声（建筑插入损耗）：开窗 −8 dB、关窗 −18 dB（用户确认）
+    openDb: 8,
+    closedDb: 18,
+  },
+  complaints: {
+    radiusM: 400,   // 311 complaints counted within this radius of the address
+    months: 3,      // …and within this many months back from the real today (not the as-of date)
+    apiBase: 'https://data.cityofnewyork.us/resource/erm2-nwe9.json',
+    // 与 scripts/activity-curves.js 的 DESCRIPTORS 保持同步
+    descriptors: ['Noise: Construction Before/After Hours (NM1)', 'Noise: Construction Equipment (NC1)', 'Noise: Jack Hammering (NC2)', 'Construction', 'Construction Equipment'],
+  },
+};
+
 // ---- State ----
 let isSearchActive = false;
 let gridLayer = null;
@@ -56,6 +86,17 @@ let searchCircle100 = null;
 let searchCircle50  = null;
 let searchPin       = null;
 let nominatimLastCall = 0;
+let currentAddress = '';   // display string of the searched address (sent to the AI analysis)
+let searchSeq = 0;         // guards against stale async results when a newer search starts
+let cardWindowMode = 'closed'; // 'open' | 'closed' — which facade value the summary card shows (map is always outdoor)
+let lastSummaryState = null;       // cached so the card toggle can re-render without refetching
+
+// Facade attenuation for the card: −8 open window, −18 closed (SUMMARY_CONFIG.facade, user-confirmed)
+function facadeDbForMode(mode) {
+  return mode === 'open' ? SUMMARY_CONFIG.facade.openDb : SUMMARY_CONFIG.facade.closedDb;
+}
+// Shift the outdoor model down by the facade loss; only applied to the summary card display, grid data stays outdoor
+function applyFacade(dba, mode) { return Math.max(0, dba - facadeDbForMode(mode)); }
 
 // ---- DOM ----
 const loadingOverlay    = document.getElementById('loading-overlay');
@@ -210,6 +251,7 @@ async function fetchNearbyPermits(minLat, maxLat, minLng, maxLng) {
 
 // ---- Perform Search ----
 async function performSearch(lat, lng) {
+  const seq = ++searchSeq;
   clearSearchMarkers();
   isSearchActive = true;
   map.flyTo([lat, lng], CONFIG.searchZoom, { duration: 0.8 });
@@ -223,6 +265,12 @@ async function performSearch(lat, lng) {
   searchCircle50  = L.circle([lat, lng], { radius: 50,  color: '#2b7ce6', weight: 1.5, opacity: 0.35, fillColor: '#2b7ce6', fillOpacity: 0.1 }).addTo(map);
 
   dimGrid();
+
+  // Start the summary fetches in parallel with the permit fetch (different SODA datasets)
+  const summaryPromise = Promise.allSettled([
+    fetchPointNoise(lat, lng),
+    fetchComplaints(lat, lng),
+  ]);
 
   const latPad = (CONFIG.searchRadiusM / 111320) * 1.2;
   const lngPad = (CONFIG.searchRadiusM / (111320 * Math.cos(lat * Math.PI / 180))) * 1.2;
@@ -256,6 +304,16 @@ async function performSearch(lat, lng) {
   searchCount.classList.remove('hidden');
   legendNoise.style.display = 'none';
   legendWorkTypes.style.display = 'block';
+
+  const [pointRes, complaintsRes] = await summaryPromise;
+  if (seq !== searchSeq || !isSearchActive) return; // superseded search or panel closed — drop stale results
+
+  const point      = pointRes.status === 'fulfilled' ? pointRes.value : null;
+  const pointError = pointRes.status === 'rejected';
+  const complaints = complaintsRes.status === 'fulfilled' ? complaintsRes.value : null;
+  renderSummaryCard({ point, pointError, complaints, complaintsPending: false });
+
+  if (nearby.length > 0) fetchAIAnalysis(nearby, { point, complaints }, seq);
 }
 
 // ---- Clear Search ----
@@ -288,40 +346,154 @@ function offsetCoord(lat, lng, used) {
   return [lat + dist * Math.cos(angle), lng + dist * Math.sin(angle)];
 }
 
+// ---- Summary Card (address search panel) ----
+function feelingForDba(dba, mode = 'outdoor') {
+  if (dba === null || dba === undefined) return null;
+  const bands = mode === 'outdoor' ? SUMMARY_CONFIG.feelingBands : SUMMARY_CONFIG.feelingBandsIndoor;
+  return bands.find(b => dba > b.min);
+}
+
+async function fetchPointNoise(lat, lng) {
+  const resp = await fetch('/api/point', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ lat, lng, dateStart: CONFIG.dateStart, dateEnd: CONFIG.dateEnd }),
+    signal: AbortSignal.timeout(60000),
+  });
+  if (!resp.ok) throw new Error(`Point HTTP ${resp.status}`);
+  return resp.json();
+}
+
+async function fetchComplaints(lat, lng) {
+  const c = SUMMARY_CONFIG.complaints;
+  // Window is anchored to the real today — deliberately NOT the as-of date
+  const end = new Date();
+  const start = new Date();
+  start.setMonth(start.getMonth() - c.months);
+  const from = toDateStr(start) + 'T00:00:00';
+  const to = toDateStr(end) + 'T23:59:59';
+
+  const latPad = (c.radiusM / 111320) * 1.2;
+  const lngPad = (c.radiusM / (111320 * Math.cos(lat * Math.PI / 180))) * 1.2;
+  const where = [
+    `complaint_type = 'Noise'`,
+    `descriptor in ('${c.descriptors.join("','")}')`,
+    `created_date >= '${from}'`,
+    `created_date <= '${to}'`,
+    `latitude between ${lat - latPad} and ${lat + latPad}`,
+    `longitude between ${lng - lngPad} and ${lng + lngPad}`,
+    `latitude IS NOT NULL`,
+  ].join(' AND ');
+  const params = new URLSearchParams({ '$select': 'latitude,longitude', '$where': where, '$limit': '5000' });
+  const resp = await fetch(`${c.apiBase}?${params}`, { signal: AbortSignal.timeout(30000) });
+  if (!resp.ok) throw new Error(`311 HTTP ${resp.status}`);
+
+  const rows = await resp.json();
+  if (rows.length >= 5000) return '5000+'; // truncated by $limit — flag instead of silently undercounting
+  let count = 0;
+  for (const r of rows) {
+    const rLat = parseFloat(r.latitude), rLng = parseFloat(r.longitude);
+    if (isNaN(rLat) || isNaN(rLng)) continue;
+    if (haversineDistance(lat, lng, rLat, rLng) <= c.radiusM) count++;
+  }
+  return count;
+}
+
+// state: { point (object|null), pointError (bool), complaints (number|string|null), complaintsPending (bool) }
+function renderSummaryCard(state) {
+  lastSummaryState = state;
+  let main = '';
+  if (state.pointError) {
+    main = '<div class="summary-error">Noise estimate unavailable — please try again</div>';
+  } else if (!state.point) {
+    main = '<div class="summary-loading">Calculating noise…</div>';
+  } else if (state.point.dba === null) {
+    main = '<div class="summary-dba-none">No major construction within 150m</div>';
+  } else {
+    // Indoor estimate = outdoor model − facade loss, per the card's window toggle
+    const dba = applyFacade(state.point.dba, cardWindowMode);
+    const feeling = feelingForDba(dba, cardWindowMode);
+    const pill = feeling
+      ? `<span class="summary-feeling" style="--feeling-color:${feeling.color}"><span class="summary-feeling-bar"></span>${feeling.label} · ${feeling.sublabel}</span>`
+      : '';
+    main = `<div class="summary-main"><span class="summary-dba-value">${dba.toFixed(1)}</span><span class="summary-dba-unit">dBA</span>${pill}</div>`;
+    const open = cardWindowMode === 'open';
+    main += `<button class="summary-toggle">${open ? '🪟 Window open · tap to see windows closed' : '🔒 Windows closed · tap to see window open'}</button>`;
+  }
+
+  let items = '';
+  if (state.point && state.point.count > 0) {
+    items += `<div class="summary-item">${state.point.count} construction ${state.point.count === 1 ? 'site' : 'sites'} within 150m</div>`;
+  }
+  const c = SUMMARY_CONFIG.complaints;
+  const complaintsText = state.complaintsPending ? '…'
+    : (state.complaints === null ? '<span class="unavailable">unavailable</span>' : state.complaints);
+  items += `<div class="summary-item">311 complaints (${c.months} mo · ${c.radiusM}m): ${complaintsText}</div>`;
+
+  const asOf = CONFIG.dateEnd ? ` · as of ${toDisplayStr(CONFIG.dateEnd.slice(0, 10))}` : '';
+  const modeDesc = cardWindowMode === 'open' ? 'window open' : 'windows closed';
+  const facadeNote = state.point && state.point.dba !== null
+    ? ` · ${facadeDbForMode(cardWindowMode)} dB ${modeDesc} facade is a typical value — actual varies by building`
+    : '';
+  const estimateDesc = `indoor (${modeDesc}, −${facadeDbForMode(cardWindowMode)} dB)`;
+  panelStats.innerHTML = `<div class="summary-card">${main}<div class="summary-items">${items}</div><div class="summary-note">Modeled weekday-daytime ${estimateDesc} estimate · same model as the map${asOf}${facadeNote}</div></div>`;
+}
+
+// Card's own window toggle (open/closed) — the map itself always shows the outdoor model
+panelStats.addEventListener('click', (e) => {
+  if (!e.target.closest('.summary-toggle')) return;
+  cardWindowMode = cardWindowMode === 'open' ? 'closed' : 'open';
+  if (lastSummaryState) renderSummaryCard(lastSummaryState);
+});
+
 // ---- AI Analysis ----
-async function fetchAIAnalysis(projects) {
+function buildAISummary(summary) {
+  const dba = summary.point && summary.point.dba !== null ? summary.point.dba : null;
+  const feeling = dba !== null ? feelingForDba(dba) : null;
+  const f = SUMMARY_CONFIG.facade;
+  const round1 = x => Math.round(x * 10) / 10;
+  return {
+    dba,
+    feeling: feeling ? feeling.label : null,
+    feelingDetail: feeling ? feeling.sublabel : null,
+    indoorClosed: dba !== null ? round1(Math.max(0, dba - f.closedDb)) : null,
+    indoorOpen: dba !== null ? round1(Math.max(0, dba - f.openDb)) : null,
+    facadeClosedDb: f.closedDb,
+    facadeOpenDb: f.openDb,
+    complaints311: summary.complaints ?? null,
+    address: currentAddress || null,
+    asOf: CONFIG.dateEnd ? CONFIG.dateEnd.slice(0, 10) : null,
+  };
+}
+
+async function fetchAIAnalysis(projects, summary, seq) {
   aiAnalysis.classList.add('show');
   aiAnalysis.innerHTML = '<div class="ai-title">🤖 AI Noise Analysis</div><div class="ai-loading">Analyzing construction noise impact…</div>';
   try {
     const resp = await fetch('/api/analyze', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projects: projects.map(p => ({ work_type: p.work_type, job_description: p.job_description||'', issued_date: p.issued_date?p.issued_date.substring(0,10):null, distance: p.distance })) }),
+      body: JSON.stringify({
+        projects: projects.map(p => ({ work_type: p.work_type, job_description: p.job_description||'', issued_date: p.issued_date?p.issued_date.substring(0,10):null, distance: p.distance })),
+        ...(summary ? { summary: buildAISummary(summary) } : {}),
+      }),
     });
     const data = await resp.json();
+    if (seq !== searchSeq) return; // superseded by a newer search
     aiAnalysis.innerHTML = data.analysis ? `<div class="ai-title">🤖 AI Noise Analysis</div><div class="ai-text">${data.analysis}</div>` : '<div class="ai-title">🤖 AI Noise Analysis</div><div class="ai-error">Analysis temporarily unavailable.</div>';
   } catch (error) {
+    if (seq !== searchSeq) return;
     aiAnalysis.innerHTML = '<div class="ai-title">🤖 AI Noise Analysis</div><div class="ai-error">Analysis temporarily unavailable.</div>';
   }
 }
 
 // ---- Results Panel ----
 function showResultsPanel(nearby) {
+  renderSummaryCard({ point: null, pointError: false, complaints: null, complaintsPending: true });
   const total = nearby.length;
   if (total === 0) {
-    panelStats.innerHTML = '<div class="stat-total">No projects found</div><div class="stat-sub">within 150m radius</div>';
     panelList.innerHTML = '<div class="panel-empty"><div class="empty-icon">🏗️</div><div class="empty-text">No construction projects nearby</div><div class="empty-hint">Try a different address or expand the date range</div></div>';
     resultsPanel.classList.add('open');
     return;
   }
-  const typeCounts = {};
-  for (const item of nearby) { const t = item.work_type||'Unknown'; typeCounts[t]=(typeCounts[t]||0)+1; }
-  let statsHTML = `<div class="stat-total">${total} projects</div><div class="stat-sub">within 150m radius</div><div class="stat-types">`;
-  for (const [type, count] of Object.entries(typeCounts)) {
-    const label = WORK_TYPE_LABELS[type]||type;
-    statsHTML += `<div class="stat-type-item"><span class="stat-type-dot" style="background:${getWorkTypeColor(type)}"></span>${label}: ${count}</div>`;
-  }
-  statsHTML += '</div>';
-  panelStats.innerHTML = statsHTML;
 
   let listHTML = '<div class="panel-section-label">Projects</div>';
   for (let i=0; i<nearby.length; i++) {
@@ -336,7 +508,6 @@ function showResultsPanel(nearby) {
     card.addEventListener('click', () => { const item = nearby[parseInt(card.dataset.index)]; map.flyTo([parseFloat(item.latitude), parseFloat(item.longitude)], 17, { duration: 0.6 }); });
   });
   resultsPanel.classList.add('open');
-  fetchAIAnalysis(nearby);
 }
 
 function hideResultsPanel() {
@@ -375,6 +546,7 @@ async function doAddressSearch() {
   try {
     const result = await geocodeAddress(val);
     if (!result) { searchCountText.textContent = '⚠️ Address not found.'; clearSearchMarkers(); return; }
+    currentAddress = result.display || val;
     await performSearch(result.lat, result.lng);
   } catch (error) { searchCountText.textContent = '⚠️ Search failed.'; }
 }
