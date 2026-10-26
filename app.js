@@ -62,9 +62,9 @@ const SUMMARY_CONFIG = {
     { min: -Infinity, color: '#3288bd', label: 'Quiet',     sublabel: 'Meets interior night criterion' },
   ],
   facade: {
-    // 典型墙体隔声（建筑插入损耗）：开窗 −8 dB、关窗 −18 dB（用户确认）
-    openDb: 8,
-    closedDb: 18,
+    // 典型墙体隔声（建筑插入损耗）：开窗 −10 dB、关窗 −20 dB（用户确认）
+    openDb: 10,
+    closedDb: 20,
   },
   complaints: {
     radiusM: 400,   // 311 complaints counted within this radius of the address
@@ -91,7 +91,7 @@ let searchSeq = 0;         // guards against stale async results when a newer se
 let cardWindowMode = 'closed'; // 'open' | 'closed' — which facade value the summary card shows (map is always outdoor)
 let lastSummaryState = null;       // cached so the card toggle can re-render without refetching
 
-// Facade attenuation for the card: −8 open window, −18 closed (SUMMARY_CONFIG.facade, user-confirmed)
+// Facade attenuation for the card: −10 open window, −20 closed (SUMMARY_CONFIG.facade, user-confirmed)
 function facadeDbForMode(mode) {
   return mode === 'open' ? SUMMARY_CONFIG.facade.openDb : SUMMARY_CONFIG.facade.closedDb;
 }

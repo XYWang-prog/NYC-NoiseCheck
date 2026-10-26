@@ -30,8 +30,8 @@ app.post('/api/analyze', async (req, res) => {
 
 8. TREAT 311 COMPLAINTS as empirical corroboration only: a low count does not override the model. If the count is notable, mention it as "resident complaints nearby" rather than proof.
 `;
-      const closedDb = summary.facadeClosedDb ?? 18;
-      const openDb = summary.facadeOpenDb ?? 8;
+      const closedDb = summary.facadeClosedDb ?? 20;
+      const openDb = summary.facadeOpenDb ?? 10;
       summaryBlock = `Modeled facts about this address (${summary.address || 'this address'} as of ${summary.asOf || 'unknown date'}):
 ${summary.dba !== null && summary.dba !== undefined ? `- Noise model: ${summary.dba} dBA outdoor weekday-daytime Leq — rating ${summary.feeling || 'n/a'} (${summary.feelingDetail || ''}).` : '- Noise model: no major construction within 150m of this address.'}
 ${summary.indoorClosed !== null && summary.indoorClosed !== undefined ? `- Estimated indoor level: ${summary.indoorClosed} dBA with windows closed, ${summary.indoorOpen} dBA with window open (outdoor minus ${closedDb} dB / ${openDb} dB typical facade loss).` : ''}

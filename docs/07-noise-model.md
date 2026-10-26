@@ -339,7 +339,7 @@ For context:
 
 ### 10.3 Indoor feeling tiers (summary card, added 2026-10-26)
 
-The map always shows the outdoor model (§10). The address search card additionally shows the indoor estimate — the outdoor dBA shifted by a typical facade loss (−8 dB window open, −18 dB windows closed, `SUMMARY_CONFIG.facade`) — and rates it with four indoor feeling tiers, anchored the same way as the outdoor bands: published criteria, with CEQR's L10 converted to Leq by subtracting 3 dB (§7.1, Eq. 3). A separate indoor scale is needed because indoor 50 dBA is already intrusive while outdoor 50 dBA is quiet.
+The map always shows the outdoor model (§10). The address search card additionally shows the indoor estimate — the outdoor dBA shifted by a typical facade loss (−10 dB window open, −20 dB windows closed, `SUMMARY_CONFIG.facade`) — and rates it with four indoor feeling tiers, anchored the same way as the outdoor bands: published criteria, with CEQR's L10 converted to Leq by subtracting 3 dB (§7.1, Eq. 3). A separate indoor scale is needed because indoor 50 dBA is already intrusive while outdoor 50 dBA is quiet.
 
 | Leq (dBA) | Color | Label | Source |
 |---|---|---|---|
@@ -350,6 +350,7 @@ The map always shows the outdoor model (§10). The address search card additiona
 
 - **The 42 dBA boundary is the CEQR interior acceptability line** (L10 45 daytime for residences), the same role the 67 dBA line plays outdoors.
 - **WHO corroboration.** WHO Guidelines for Community Noise (1999): the indoor daytime guideline 35 dB LAeq falls inside the 32–42 tier, and the night bedroom guideline 30 dB LAeq sits at the 32 boundary.
+- **Facade loss (−10 dB open / −20 dB closed).** 20 dB is the FTA's standard exterior-to-interior building reduction with windows closed (Transit Noise and Vibration Impact Assessment), and 10 dB is the commonly used loss with windows open. CEQR Table 19-3's 28–35 dB is a design requirement for *new* construction, not a typical value for the existing housing stock, so it is not used. Actual losses vary with window type (old single-glazing ≈ 15–20 dB, double glazing ≈ 25 dB); the card's footnote marks the value as typical.
 - A three-mode map toggle (outdoor / window open / windows closed, with a separate six-band indoor color scale) was built and then removed at the owner's request on 2026-10-26 — the map is outdoor-only; indoor numbers remain on the card.
 
 ---

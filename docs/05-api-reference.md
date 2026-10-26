@@ -221,10 +221,10 @@ Request:
 ```json
 {
   "projects": [{ "work_type": "Foundation", "job_description": "…", "issued_date": "2026-08-01", "distance": 45 }],
-  "summary": { "dba": 73.5, "feeling": "Loud", "feelingDetail": "Marginally unacceptable", "indoorClosed": 55.5, "indoorOpen": 65.5, "facadeClosedDb": 18, "facadeOpenDb": 8, "complaints311": 7, "address": "350 5th Ave, New York", "asOf": "2026-10-26" }
+  "summary": { "dba": 73.5, "feeling": "Loud", "feelingDetail": "Marginally unacceptable", "indoorClosed": 53.5, "indoorOpen": 63.5, "facadeClosedDb": 20, "facadeOpenDb": 10, "complaints311": 7, "address": "350 5th Ave, New York", "asOf": "2026-10-26" }
 }
 ```
 
-`summary` is optional (absent = legacy prompt). `dba`/`feeling` are `null` when the model found no sites within 150 m; `complaints311` is `null` when the 311 fetch failed (the prompt tells the model not to invent numbers). `indoorClosed`/`indoorOpen` are the modeled outdoor level minus a typical facade loss (`facadeClosedDb` = 18 dB closed windows, `facadeOpenDb` = 8 dB window open); the prompt quotes indoor levels as the resident's actual exposure, defaulting to 18/8 if the fields are absent.
+`summary` is optional (absent = legacy prompt). `dba`/`feeling` are `null` when the model found no sites within 150 m; `complaints311` is `null` when the 311 fetch failed (the prompt tells the model not to invent numbers). `indoorClosed`/`indoorOpen` are the modeled outdoor level minus a typical facade loss (`facadeClosedDb` = 20 dB closed windows, `facadeOpenDb` = 10 dB window open); the prompt quotes indoor levels as the resident's actual exposure, defaulting to 20/10 if the fields are absent.
 
 Response `200`: `{ "analysis": "…" }` (2-4 sentences, English). Response `500`: `{ "analysis": null, "error": "AI analysis unavailable. Please try again later." }`.
