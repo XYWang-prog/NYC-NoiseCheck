@@ -339,18 +339,19 @@ For context:
 
 ### 10.3 Indoor feeling tiers (summary card, added 2026-10-26)
 
-The map always shows the outdoor model (§10). The address search card additionally shows the indoor estimate — the outdoor dBA shifted by a typical facade loss (−10 dB window open, −20 dB windows closed, `SUMMARY_CONFIG.facade`) — and rates it with four indoor feeling tiers, anchored the same way as the outdoor bands: published criteria, with CEQR's L10 converted to Leq by subtracting 3 dB (§7.1, Eq. 3). A separate indoor scale is needed because indoor 50 dBA is already intrusive while outdoor 50 dBA is quiet.
+The map always shows the outdoor model (§10). The address search card additionally shows the indoor estimate — the outdoor dBA shifted by a typical facade loss (windows closed: −20 dB typical building / −28 dB new construction 2010+; −10 dB window open; `SUMMARY_CONFIG.facade`) — and rates it with four indoor feeling tiers anchored to published indoor criteria that are already in Leq/Ldn form, so no L10 conversion is needed. A separate indoor scale is needed because indoor 50 dBA is already intrusive while outdoor 50 dBA is quiet. The tiers are calibrated to a renter's everyday perception: an earlier version used CEQR's interior L10 thresholds converted with the −3 dB traffic-noise rule, which flagged about a third of the city as "Very loud" — defensible as a regulatory reading, but harsher than how construction noise is actually experienced (see the bullet below).
 
 | Leq (dBA) | Color | Label | Source |
 |---|---|---|---|
-| > 52 | `#f46d43` orange-red | Very loud | Derived: interior day criterion + 10 (perception tier) |
-| 42–52 | `#fdae61` light orange | Loud | CEQR Table 19-2, residence interior 7 AM–10 PM: L10 45 → Leq 42 |
-| 32–42 | `#66c2a5` teal | Moderate | CEQR: interior L10 45 → Leq 42 (upper bound) |
-| ≤ 32 | `#3288bd` blue | Quiet | CEQR Table 19-2, residence interior 10 PM–7 AM: L10 35 → Leq 32 |
+| > 55 | `#f46d43` orange-red | Very loud | Derived: adequacy line + 10 (perception tier) |
+| 45–55 | `#fdae61` light orange | Loud | EPA Levels Document (1974): indoor Ldn 45 adequacy line |
+| 35–45 | `#66c2a5` teal | Moderate | Meets EPA indoor adequacy (≤ 45 Ldn); above the WHO day guideline |
+| ≤ 35 | `#3288bd` blue | Quiet | WHO Guidelines for Community Noise (1999): indoor daytime guideline 35 dB LAeq |
 
-- **The 42 dBA boundary is the CEQR interior acceptability line** (L10 45 daytime for residences), the same role the 67 dBA line plays outdoors.
-- **WHO corroboration.** WHO Guidelines for Community Noise (1999): the indoor daytime guideline 35 dB LAeq falls inside the 32–42 tier, and the night bedroom guideline 30 dB LAeq sits at the 32 boundary.
-- **Facade loss (−10 dB open / −20 dB closed).** 20 dB is the FTA's standard exterior-to-interior building reduction with windows closed (Transit Noise and Vibration Impact Assessment), and 10 dB is the commonly used loss with windows open. CEQR Table 19-3's 28–35 dB is a design requirement for *new* construction, not a typical value for the existing housing stock, so it is not used. Actual losses vary with window type (old single-glazing ≈ 15–20 dB, double glazing ≈ 25 dB); the card's footnote marks the value as typical.
+- **The 45 dBA boundary is the EPA indoor adequacy line.** The EPA Levels Document identifies indoor Ldn 45 as requisite for residential adequacy. Since construction noise is daytime-only, Ldn ≈ Leq(day) − 2 dB, so Ldn 45 ≈ daytime Leq 47 — the 2 dB is inside model uncertainty, and 45 is used as the rounded anchor.
+- **The 35 dBA boundary is the WHO indoor daytime guideline** (35 dB LAeq, the onset of moderate annoyance); the night bedroom guideline (30 dB) sits below it.
+- **Why not the CEQR interior thresholds?** CEQR Table 19-2's interior L10 45/35 are significance thresholds expressed in L10. Converting with the traffic-noise −3 dB rule gives Leq 42/32, but construction noise is intermittent — its L10−Leq is really 5–10 dB, so a faithful conversion sits *lower* still. A renter-facing label anchored that way marks about a third of the city "Very loud", which matches the regulatory lens but not everyday experience. The 35/45/55 scale keeps published anchors while reading like a renter would describe the noise.
+- **Facade loss (open −10 dB; closed −20 dB typical / −28 dB new construction).** The card shows both closed-window values. 20 dB is the FTA's standard exterior-to-interior building reduction with windows closed (Transit Noise and Vibration Impact Assessment) — a typical-building figure. 28 dB is the minimum window-wall attenuation NYC Building Code (BC 1207) / CEQR Table 19-3 require for new residential construction in high-noise areas — the right figure for post-2010 buildings, which is what most searches target. 10 dB is the commonly used loss with windows open. Actual losses vary with window type (old single-glazing ≈ 15–20 dB, double glazing ≈ 25 dB, PTAC through-wall units are weak points); the card's footnote marks the values as typical.
 - A three-mode map toggle (outdoor / window open / windows closed, with a separate six-band indoor color scale) was built and then removed at the owner's request on 2026-10-26 — the map is outdoor-only; indoor numbers remain on the card.
 
 ---

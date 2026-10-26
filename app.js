@@ -54,17 +54,21 @@ const SUMMARY_CONFIG = {
     { min: 62,        color: '#66c2a5', label: 'Moderate',  sublabel: 'Marginally acceptable' },
     { min: -Infinity, color: '#3288bd', label: 'Quiet',     sublabel: 'Acceptable' },
   ],
-  // 室内 4 档：锚点 32/42/52（CEQR 室内昼间 L10 45≈Leq 42、夜间 L10 35≈Leq 32，docs/07 §10.3），仅用于卡片
+  // 室内 4 档：锚点 35/45/55（WHO 室内昼间 35 LAeq + EPA 室内 45 Ldn 适宜线，docs/07 §10.3），仅用于卡片。
+  // 都是 Leq 口径、无需 L10 换算；用户确认（原 32/42/52 基于 CEQR L10，对租客感知偏严）。
   feelingBandsIndoor: [
-    { min: 52,        color: '#f46d43', label: 'Very loud', sublabel: 'Intrusive indoor' },
-    { min: 42,        color: '#fdae61', label: 'Loud',      sublabel: 'Above interior day criterion' },
-    { min: 32,        color: '#66c2a5', label: 'Moderate',  sublabel: 'Meets interior day criterion' },
-    { min: -Infinity, color: '#3288bd', label: 'Quiet',     sublabel: 'Meets interior night criterion' },
+    { min: 55,        color: '#f46d43', label: 'Very loud', sublabel: 'Far above indoor adequacy' },
+    { min: 45,        color: '#fdae61', label: 'Loud',      sublabel: 'Above EPA indoor adequacy (45 Ldn)' },
+    { min: 35,        color: '#66c2a5', label: 'Moderate',  sublabel: 'Meets EPA indoor adequacy' },
+    { min: -Infinity, color: '#3288bd', label: 'Quiet',     sublabel: 'Meets WHO indoor day guideline (35 LAeq)' },
   ],
   facade: {
-    // 典型墙体隔声（建筑插入损耗）：开窗 −10 dB、关窗 −20 dB（用户确认）
+    // 典型墙体隔声（建筑插入损耗）：开窗 −10 dB；关窗分两档显示 ——
+    // 一般建筑 −20 dB（FTA 典型值）、2010 后新建公寓 −28 dB（NYC BC 1207 / CEQR 表 19-3 规范下限）。
+    // 卡片关窗时同时显示两个室内值（用户确认）。
     openDb: 10,
     closedDb: 20,
+    closedNewDb: 28,
   },
   complaints: {
     radiusM: 400,   // 311 complaints counted within this radius of the address
@@ -91,7 +95,9 @@ let searchSeq = 0;         // guards against stale async results when a newer se
 let cardWindowMode = 'closed'; // 'open' | 'closed' — which facade value the summary card shows (map is always outdoor)
 let lastSummaryState = null;       // cached so the card toggle can re-render without refetching
 
-// Facade attenuation for the card: −10 open window, −20 closed (SUMMARY_CONFIG.facade, user-confirmed)
+// Facade attenuation: −10 open window, −20 closed typical / −28 closed new construction
+// (SUMMARY_CONFIG.facade, user-confirmed). Closed mode shows both values, so this maps
+// only open/closed→typical; the new-construction value is read directly from the config.
 function facadeDbForMode(mode) {
   return mode === 'open' ? SUMMARY_CONFIG.facade.openDb : SUMMARY_CONFIG.facade.closedDb;
 }
@@ -409,14 +415,25 @@ function renderSummaryCard(state) {
   } else if (state.point.dba === null) {
     main = '<div class="summary-dba-none">No major construction within 150m</div>';
   } else {
-    // Indoor estimate = outdoor model − facade loss, per the card's window toggle
-    const dba = applyFacade(state.point.dba, cardWindowMode);
-    const feeling = feelingForDba(dba, cardWindowMode);
-    const pill = feeling
-      ? `<span class="summary-feeling" style="--feeling-color:${feeling.color}"><span class="summary-feeling-bar"></span>${feeling.label} · ${feeling.sublabel}</span>`
-      : '';
-    main = `<div class="summary-main"><span class="summary-dba-value">${dba.toFixed(1)}</span><span class="summary-dba-unit">dBA</span>${pill}</div>`;
+    // Indoor estimate = outdoor model − facade loss, per the card's window toggle.
+    // Closed mode shows two values: new construction (2010+, −28 dB) and typical (−20 dB).
     const open = cardWindowMode === 'open';
+    const pill = (dba, mode) => {
+      const fe = feelingForDba(dba, mode);
+      return fe
+        ? `<span class="summary-feeling" style="--feeling-color:${fe.color}"><span class="summary-feeling-bar"></span>${fe.label} · ${fe.sublabel}</span>`
+        : '';
+    };
+    if (open) {
+      const dba = applyFacade(state.point.dba, 'open');
+      main = `<div class="summary-main"><span class="summary-dba-value">${dba.toFixed(1)}</span><span class="summary-dba-unit">dBA</span>${pill(dba, 'open')}</div><div class="summary-caption">Window open · −${SUMMARY_CONFIG.facade.openDb} dB facade</div>`;
+    } else {
+      const f = SUMMARY_CONFIG.facade;
+      const dbaNew = Math.max(0, state.point.dba - f.closedNewDb);
+      const dbaTyp = Math.max(0, state.point.dba - f.closedDb);
+      main = `<div class="summary-main"><span class="summary-dba-value">${dbaNew.toFixed(1)}</span><span class="summary-dba-unit">dBA</span>${pill(dbaNew, 'closed')}</div><div class="summary-caption">New construction (2010+), windows closed · −${f.closedNewDb} dB facade</div>`;
+      main += `<div class="summary-alt"><span class="summary-alt-value">${dbaTyp.toFixed(1)} dBA</span>${pill(dbaTyp, 'closed')}<span class="summary-caption">Typical building, windows closed · −${f.closedDb} dB facade</span></div>`;
+    }
     main += `<button class="summary-toggle">${open ? '🪟 Window open · tap to see windows closed' : '🔒 Windows closed · tap to see window open'}</button>`;
   }
 
@@ -430,11 +447,12 @@ function renderSummaryCard(state) {
   items += `<div class="summary-item">311 complaints (${c.months} mo · ${c.radiusM}m): ${complaintsText}</div>`;
 
   const asOf = CONFIG.dateEnd ? ` · as of ${toDisplayStr(CONFIG.dateEnd.slice(0, 10))}` : '';
-  const modeDesc = cardWindowMode === 'open' ? 'window open' : 'windows closed';
   const facadeNote = state.point && state.point.dba !== null
-    ? ` · ${facadeDbForMode(cardWindowMode)} dB ${modeDesc} facade is a typical value — actual varies by building`
+    ? ' Facade loss is a typical value — actual varies by building.'
     : '';
-  const estimateDesc = `indoor (${modeDesc}, −${facadeDbForMode(cardWindowMode)} dB)`;
+  const estimateDesc = cardWindowMode === 'open'
+    ? `indoor (window open, −${SUMMARY_CONFIG.facade.openDb} dB)`
+    : `indoor (windows closed, −${SUMMARY_CONFIG.facade.closedDb} to −${SUMMARY_CONFIG.facade.closedNewDb} dB)`;
   panelStats.innerHTML = `<div class="summary-card">${main}<div class="summary-items">${items}</div><div class="summary-note">Modeled weekday-daytime ${estimateDesc} estimate · same model as the map${asOf}${facadeNote}</div></div>`;
 }
 
@@ -456,8 +474,10 @@ function buildAISummary(summary) {
     feeling: feeling ? feeling.label : null,
     feelingDetail: feeling ? feeling.sublabel : null,
     indoorClosed: dba !== null ? round1(Math.max(0, dba - f.closedDb)) : null,
+    indoorClosedNew: dba !== null ? round1(Math.max(0, dba - f.closedNewDb)) : null,
     indoorOpen: dba !== null ? round1(Math.max(0, dba - f.openDb)) : null,
     facadeClosedDb: f.closedDb,
+    facadeClosedNewDb: f.closedNewDb,
     facadeOpenDb: f.openDb,
     complaints311: summary.complaints ?? null,
     address: currentAddress || null,
