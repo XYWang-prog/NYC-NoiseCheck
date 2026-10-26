@@ -497,6 +497,28 @@ body {
 #panel-stats .summary-toggle:hover {
   background: #e3ecff;
 }
+#panel-stats .summary-caption {
+  font-size: 11px;
+  color: #999;
+  margin-top: 2px;
+}
+#panel-stats .summary-alt {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+#panel-stats .summary-alt-value {
+  font-size: 15px;
+  font-weight: 700;
+  color: #555;
+  font-variant-numeric: tabular-nums;
+}
+#panel-stats .summary-alt .summary-caption {
+  flex-basis: 100%;
+  margin-top: 0;
+}
 #panel-stats .summary-items {
   display: flex;
   gap: 8px;
